@@ -1,0 +1,185 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 用户偏好设置
+  language      String @default("zh")
+  notifications Boolean @default(true)
+  theme         String @default("light")
+
+  // 关联数据
+  profile      UserProfile?
+  applications Application[]
+  essays       Essay[]
+
+  @@map("users")
+}
+
+model UserProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 基本信息
+  phone      String?
+  wechat     String?
+  birthDate  DateTime?
+  nationality String?
+
+  // 学术信息
+  currentEducation String?
+  gpa             Float?
+  major           String?
+  graduationDate  DateTime?
+  
+  // 标准化考试成绩
+  toefl Int?
+  ielts Float?
+  gre   Int?
+  gmat  Int?
+
+  // 背景经历
+  experiences Json?
+  goals       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_profiles")
+}
+
+model School {
+  id          String @id @default(cuid())
+  name        String
+  country     String
+  city        String?
+  ranking     Int?
+  website     String?
+  logo        String?
+  description String?
+
+  programs     Program[]
+  applications Application[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("schools")
+}
+
+model Program {
+  id       String @id @default(cuid())
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id])
+
+  name        String
+  degree      String // Bachelor, Master, PhD
+  field       String
+  duration    Int? // 学制（月）
+  tuition     Float?
+  currency    String @default("USD")
+  description String?
+
+  requirements Json? // 申请要求
+  deadlines    Json? // 申请截止日期
+
+  applications Application[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("programs")
+}
+
+model Application {
+  id        String @id @default(cuid())
+  userId    String
+  user      User   @relation(fields: [userId], references: [id])
+  schoolId  String
+  school    School @relation(fields: [schoolId], references: [id])
+  programId String?
+  program   Program? @relation(fields: [programId], references: [id])
+
+  status   ApplicationStatus @default(DRAFT)
+  deadline DateTime?
+  
+  // 申请材料
+  documents Json?
+  essays    Essay[]
+
+  // 申请结果
+  result       ApplicationResult?
+  resultDate   DateTime?
+  resultNotes  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("applications")
+}
+
+model Essay {
+  id            String @id @default(cuid())
+  userId        String
+  user          User   @relation(fields: [userId], references: [id])
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id])
+
+  title   String
+  type    EssayType
+  prompt  String?
+  content String
+  
+  // AI生成相关
+  isAIGenerated Boolean @default(false)
+  aiPrompt      String?
+  
+  // 版本控制
+  version Int @default(1)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("essays")
+}
+
+enum ApplicationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  INTERVIEW
+  WAITLISTED
+  ACCEPTED
+  REJECTED
+  DEFERRED
+}
+
+enum ApplicationResult {
+  ACCEPTED
+  REJECTED
+  WAITLISTED
+  DEFERRED
+}
+
+enum EssayType {
+  PERSONAL_STATEMENT
+  STATEMENT_OF_PURPOSE
+  SUPPLEMENTAL_ESSAY
+  RECOMMENDATION_LETTER
+  COVER_LETTER
+  OTHER
+}
