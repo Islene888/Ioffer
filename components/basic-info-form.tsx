@@ -1,8 +1,7 @@
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -14,6 +13,8 @@ import { useLanguage } from "@/contexts/language-context"
 
 export function BasicInfoForm() {
   const { t } = useLanguage()
+  const [isLoading, setIsLoading] = useState(false)
+  const [isSaved, setIsSaved] = useState(false)
 
   const [formData, setFormData] = useState({
     name: "",
@@ -27,10 +28,76 @@ export function BasicInfoForm() {
     bio: "",
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    loadUserProfile()
+  }, [])
+
+  const loadUserProfile = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      if (!token) return
+
+      const response = await fetch("/api/user/profile", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const { user } = await response.json()
+        if (user.profile) {
+          setFormData({
+            name: user.profile.name || "",
+            email: user.email || "",
+            phone: user.profile.phone || "",
+            gender: user.profile.gender || "",
+            birthDate: user.profile.birthDate || "",
+            nationality: user.profile.nationality || "",
+            currentLocation: user.profile.currentLocation || "",
+            targetCountries: user.profile.targetCountries || "",
+            bio: user.profile.bio || "",
+          })
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load profile:", error)
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Handle form submission
-    console.log("Basic info submitted:", formData)
+    setIsLoading(true)
+
+    try {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        alert("请先登录")
+        return
+      }
+
+      const response = await fetch("/api/user/profile", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          basicInfo: formData,
+        }),
+      })
+
+      if (response.ok) {
+        setIsSaved(true)
+        setTimeout(() => setIsSaved(false), 3000)
+      } else {
+        alert("保存失败，请重试")
+      }
+    } catch (error) {
+      console.error("Failed to save profile:", error)
+      alert("保存失败，请重试")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleInputChange = (field: string, value: string) => {
@@ -165,9 +232,9 @@ export function BasicInfoForm() {
         />
       </div>
 
-      <Button type="submit" className="bg-secondary hover:bg-secondary/90">
+      <Button type="submit" className="bg-secondary hover:bg-secondary/90" disabled={isLoading}>
         <Save className="h-4 w-4 mr-2" />
-        {t("profile.basic.save")}
+        {isLoading ? "保存中..." : isSaved ? "已保存" : t("profile.basic.save")}
       </Button>
     </form>
   )

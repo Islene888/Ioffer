@@ -1,8 +1,7 @@
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -28,9 +27,86 @@ export function AcademicInfoForm() {
     { type: "", title: "", organization: "", duration: "", description: "" },
   ])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [isLoading, setIsLoading] = useState(false)
+  const [isSaved, setIsSaved] = useState(false)
+
+  useEffect(() => {
+    loadUserProfile()
+  }, [])
+
+  const loadUserProfile = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      if (!token) return
+
+      const response = await fetch("/api/user/profile", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const { user } = await response.json()
+        if (user.profile) {
+          setFormData({
+            currentEducation: user.profile.currentEducation || "",
+            school: user.profile.school || "",
+            major: user.profile.major || "",
+            gpa: user.profile.gpa || "",
+            gpaScale: user.profile.gpaScale || "4.0",
+            graduationDate: user.profile.graduationDate || "",
+            targetDegree: user.profile.targetDegree || "",
+            targetMajor: user.profile.targetMajor || "",
+          })
+        }
+        if (user.languageTests) {
+          setLanguageTests(user.languageTests)
+        }
+        if (user.experiences) {
+          setExperiences(user.experiences)
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load profile:", error)
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    console.log("Academic info submitted:", { formData, languageTests, experiences })
+    setIsLoading(true)
+
+    try {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        alert("请先登录")
+        return
+      }
+
+      const response = await fetch("/api/user/profile", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          academicInfo: formData,
+          languageTests,
+          experiences,
+        }),
+      })
+
+      if (response.ok) {
+        setIsSaved(true)
+        setTimeout(() => setIsSaved(false), 3000)
+      } else {
+        alert("保存失败，请重试")
+      }
+    } catch (error) {
+      console.error("Failed to save profile:", error)
+      alert("保存失败，请重试")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const addLanguageTest = () => {
@@ -256,9 +332,9 @@ export function AcademicInfoForm() {
         </CardContent>
       </Card>
 
-      <Button type="submit" className="bg-secondary hover:bg-secondary/90">
+      <Button type="submit" className="bg-secondary hover:bg-secondary/90" disabled={isLoading}>
         <Save className="h-4 w-4 mr-2" />
-        保存学术信息
+        {isLoading ? "保存中..." : isSaved ? "已保存" : "保存学术信息"}
       </Button>
     </form>
   )

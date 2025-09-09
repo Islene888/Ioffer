@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,8 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { SchoolCard } from "@/components/school-card"
 import { RecommendationFilters } from "@/components/recommendation-filters"
-import { Search, Sparkles, Filter, SortAsc } from "lucide-react"
+import { Search, Sparkles, Filter, SortAsc, AlertCircle } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
+import Link from "next/link"
 
 export function RecommendationEngine() {
   const { t } = useLanguage()
@@ -18,154 +19,133 @@ export function RecommendationEngine() {
   const [sortBy, setSortBy] = useState("match")
   const [showFilters, setShowFilters] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [userProfile, setUserProfile] = useState<any>(null)
+  const [recommendedSchools, setRecommendedSchools] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  // Mock user profile data - in real app this would come from user profile
-  const userProfile = {
-    gpa: 3.8,
-    gpaScale: "4.0",
-    toefl: 110,
-    gre: 325,
-    major: t("recommendations.profile.major"),
-    targetDegree: t("recommendations.profile.targetDegree"),
-    targetCountries: [t("recommendations.profile.usa"), t("recommendations.profile.uk")],
+  useEffect(() => {
+    loadUserProfileAndRecommendations()
+  }, [])
+
+  const loadUserProfileAndRecommendations = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        setIsLoading(false)
+        return
+      }
+
+      const profileResponse = await fetch("/api/user/profile", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (profileResponse.ok) {
+        const { user } = await profileResponse.json()
+
+        // Extract user data for recommendations
+        const profile = user.profile
+        const languageTests = user.languageTests || []
+
+        const toeflScore = languageTests.find((test: any) => test.type === "toefl")?.score || 0
+        const greScore = languageTests.find((test: any) => test.type === "gre")?.score || 0
+
+        const userProfileData = {
+          gpa: Number.parseFloat(profile?.gpa || "0"),
+          gpaScale: profile?.gpaScale || "4.0",
+          toefl: Number.parseInt(toeflScore) || 0,
+          gre: Number.parseInt(greScore) || 0,
+          major: profile?.major || "",
+          targetDegree: profile?.targetDegree || "",
+          targetCountries: profile?.targetCountries?.split(",").map((c: string) => c.trim()) || [],
+          targetMajor: profile?.targetMajor || "",
+        }
+
+        setUserProfile(userProfileData)
+
+        if (profile?.gpa && (toeflScore || greScore)) {
+          await generateRecommendations(userProfileData)
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load user profile:", error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  // Mock recommended schools data
-  const recommendedSchools = [
-    {
-      id: 1,
-      name: t("recommendations.schools.stanford.name"),
-      englishName: "Stanford University",
-      country: t("recommendations.profile.usa"),
-      location: t("recommendations.schools.stanford.location"),
-      ranking: 2,
-      program: t("recommendations.schools.stanford.program"),
-      matchScore: 95,
-      admissionRate: 4.3,
-      avgGPA: 3.9,
-      avgTOEFL: 114,
-      avgGRE: 330,
-      tuition: "$58,416",
-      deadline: "2024-12-15",
-      requirements: {
-        minGPA: 3.7,
-        minTOEFL: 100,
-        minGRE: 320,
-      },
-      highlights: t("recommendations.schools.stanford.highlights") as string[],
-      similarCases: 12,
-      logo: "/stanford-university-logo.jpg",
-    },
-    {
-      id: 2,
-      name: t("recommendations.schools.mit.name"),
-      englishName: "MIT",
-      country: t("recommendations.profile.usa"),
-      location: t("recommendations.schools.mit.location"),
-      ranking: 1,
-      program: t("recommendations.schools.mit.program"),
-      matchScore: 88,
-      admissionRate: 6.7,
-      avgGPA: 3.95,
-      avgTOEFL: 115,
-      avgGRE: 335,
-      tuition: "$59,750",
-      deadline: "2024-12-15",
-      requirements: {
-        minGPA: 3.8,
-        minTOEFL: 100,
-        minGRE: 325,
-      },
-      highlights: t("recommendations.schools.mit.highlights") as string[],
-      similarCases: 8,
-      logo: "/mit-logo.png",
-    },
-    {
-      id: 3,
-      name: t("recommendations.schools.cmu.name"),
-      englishName: "Carnegie Mellon University",
-      country: t("recommendations.profile.usa"),
-      location: t("recommendations.schools.cmu.location"),
-      ranking: 3,
-      program: t("recommendations.schools.cmu.program"),
-      matchScore: 92,
-      admissionRate: 13.2,
-      avgGPA: 3.85,
-      avgTOEFL: 108,
-      avgGRE: 325,
-      tuition: "$58,924",
-      deadline: "2024-12-15",
-      requirements: {
-        minGPA: 3.6,
-        minTOEFL: 102,
-        minGRE: 315,
-      },
-      highlights: t("recommendations.schools.cmu.highlights") as string[],
-      similarCases: 15,
-      logo: "/carnegie-mellon-logo.jpg",
-    },
-    {
-      id: 4,
-      name: t("recommendations.schools.berkeley.name"),
-      englishName: "UC Berkeley",
-      country: t("recommendations.profile.usa"),
-      location: t("recommendations.schools.berkeley.location"),
-      ranking: 4,
-      program: t("recommendations.schools.berkeley.program"),
-      matchScore: 90,
-      admissionRate: 8.7,
-      avgGPA: 3.8,
-      avgTOEFL: 105,
-      avgGRE: 320,
-      tuition: "$44,066",
-      deadline: "2024-12-01",
-      requirements: {
-        minGPA: 3.5,
-        minTOEFL: 90,
-        minGRE: 310,
-      },
-      highlights: t("recommendations.schools.berkeley.highlights") as string[],
-      similarCases: 22,
-      logo: "/uc-berkeley-logo.png",
-    },
-    {
-      id: 5,
-      name: t("recommendations.schools.imperial.name"),
-      englishName: "Imperial College London",
-      country: t("recommendations.profile.uk"),
-      location: t("recommendations.schools.imperial.location"),
-      ranking: 6,
-      program: t("recommendations.schools.imperial.program"),
-      matchScore: 85,
-      admissionRate: 14.3,
-      avgGPA: 3.7,
-      avgTOEFL: 100,
-      avgGRE: 315,
-      tuition: "£35,100",
-      deadline: "2025-01-15",
-      requirements: {
-        minGPA: 3.5,
-        minTOEFL: 92,
-        minGRE: 310,
-      },
-      highlights: t("recommendations.schools.imperial.highlights") as string[],
-      similarCases: 18,
-      logo: "/imperial-college-london-logo.png",
-    },
-  ]
+  const generateRecommendations = async (profileData?: any) => {
+    setIsGenerating(true)
+
+    try {
+      const token = localStorage.getItem("token")
+      const profile = profileData || userProfile
+
+      const response = await fetch("/api/ai/recommendations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          gpa: profile.gpa,
+          toefl: profile.toefl,
+          gre: profile.gre,
+          major: profile.targetMajor || profile.major,
+          targetCountries: profile.targetCountries,
+          experiences: [],
+          goals: profile.targetDegree,
+        }),
+      })
+
+      if (response.ok) {
+        const { recommendations } = await response.json()
+        setRecommendedSchools(recommendations)
+      }
+    } catch (error) {
+      console.error("Failed to generate recommendations:", error)
+    } finally {
+      setIsGenerating(false)
+    }
+  }
 
   const handleGenerateRecommendations = async () => {
-    setIsGenerating(true)
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    setIsGenerating(false)
+    await generateRecommendations()
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-secondary" />
+      </div>
+    )
+  }
+
+  if (!userProfile || !userProfile.gpa) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-orange-500" />
+            完善个人档案
+          </CardTitle>
+          <CardDescription>请先完善您的个人档案信息，我们将基于您的背景为您推荐最合适的学校。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Link href="/profile">
+            <Button className="bg-secondary hover:bg-secondary/90">前往个人中心</Button>
+          </Link>
+        </CardContent>
+      </Card>
+    )
   }
 
   const filteredSchools = recommendedSchools.filter(
     (school) =>
       school.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       school.englishName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      school.program.toLowerCase().includes(searchQuery.toLowerCase()),
+      school.programs?.some((p: string) => p.toLowerCase().includes(searchQuery.toLowerCase())),
   )
 
   const sortedSchools = [...filteredSchools].sort((a, b) => {
@@ -203,23 +183,23 @@ export function RecommendationEngine() {
               <div className="text-sm text-muted-foreground">GPA</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-secondary">{userProfile.toefl}</div>
+              <div className="text-2xl font-bold text-secondary">{userProfile.toefl || "N/A"}</div>
               <div className="text-sm text-muted-foreground">TOEFL</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-secondary">{userProfile.gre}</div>
+              <div className="text-2xl font-bold text-secondary">{userProfile.gre || "N/A"}</div>
               <div className="text-sm text-muted-foreground">GRE</div>
             </div>
             <div className="text-center">
-              <div className="text-sm font-medium">{userProfile.major}</div>
+              <div className="text-sm font-medium">{userProfile.major || "未填写"}</div>
               <div className="text-sm text-muted-foreground">{t("recommendations.profile.majorLabel")}</div>
             </div>
             <div className="text-center">
-              <div className="text-sm font-medium">{userProfile.targetDegree}</div>
+              <div className="text-sm font-medium">{userProfile.targetDegree || "未填写"}</div>
               <div className="text-sm text-muted-foreground">{t("recommendations.profile.degreeLabel")}</div>
             </div>
             <div className="text-center">
-              <div className="text-sm font-medium">{userProfile.targetCountries.join(", ")}</div>
+              <div className="text-sm font-medium">{userProfile.targetCountries.join(", ") || "未填写"}</div>
               <div className="text-sm text-muted-foreground">{t("recommendations.profile.countryLabel")}</div>
             </div>
           </div>
@@ -241,7 +221,9 @@ export function RecommendationEngine() {
                 </>
               )}
             </Button>
-            <Button variant="outline">{t("recommendations.updateProfile")}</Button>
+            <Link href="/profile">
+              <Button variant="outline">{t("recommendations.updateProfile")}</Button>
+            </Link>
           </div>
         </CardContent>
       </Card>
@@ -282,27 +264,35 @@ export function RecommendationEngine() {
 
       {/* Results Summary */}
       <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
-          {t("recommendations.foundSchools").replace("{count}", sortedSchools.length.toString())}
-        </div>
+        <div className="text-sm text-muted-foreground">为您找到 {sortedSchools.length} 所推荐学校</div>
         <div className="flex gap-2">
-          <Badge variant="secondary">{t("recommendations.reachSchools")}</Badge>
-          <Badge variant="secondary">{t("recommendations.matchSchools")}</Badge>
-          <Badge variant="secondary">{t("recommendations.safetySchools")}</Badge>
+          <Badge variant="secondary">冲刺学校</Badge>
+          <Badge variant="secondary">匹配学校</Badge>
+          <Badge variant="secondary">保底学校</Badge>
         </div>
       </div>
 
       {/* School Cards */}
       <div className="grid gap-6">
-        {sortedSchools.map((school) => (
-          <SchoolCard key={school.id} school={school} userProfile={userProfile} />
-        ))}
+        {sortedSchools.length > 0 ? (
+          sortedSchools.map((school) => <SchoolCard key={school.id} school={school} userProfile={userProfile} />)
+        ) : (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-muted-foreground">
+                {recommendedSchools.length === 0 ? "点击上方按钮生成个性化推荐" : "没有找到匹配的学校，请调整搜索条件"}
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Load More */}
-      <div className="text-center">
-        <Button variant="outline">{t("recommendations.loadMore")}</Button>
-      </div>
+      {sortedSchools.length > 0 && (
+        <div className="text-center">
+          <Button variant="outline">{t("recommendations.loadMore")}</Button>
+        </div>
+      )}
     </div>
   )
 }
