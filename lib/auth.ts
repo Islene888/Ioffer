@@ -45,11 +45,12 @@ class AuthService {
         body: JSON.stringify({ email, password }),
       })
 
-      const data = await response.json()
-
       if (!response.ok) {
-        return { success: false, error: data.error || "登录失败，请检查邮箱和密码" }
+        const data = await response.json().catch(() => ({ error: "网络连接失败" }))
+        return { success: false, error: data.error || `服务器错误 (${response.status})` }
       }
+
+      const data = await response.json()
 
       const user: User = {
         id: data.user.id,
@@ -65,12 +66,12 @@ class AuthService {
       }
 
       this.setUser(user)
-      localStorage.setItem("ioffer_token", data.token)
       localStorage.setItem("ioffer_user", JSON.stringify(user))
 
       return { success: true }
     } catch (error) {
-      return { success: false, error: "网络错误，请稍后重试" }
+      console.error("Login error:", error)
+      return { success: false, error: "网络连接失败，请检查网络设置" }
     } finally {
       this.setLoading(false)
     }
@@ -88,11 +89,12 @@ class AuthService {
         body: JSON.stringify({ email, password, name }),
       })
 
-      const data = await response.json()
-
       if (!response.ok) {
-        return { success: false, error: data.error || "注册失败，请稍后重试" }
+        const data = await response.json().catch(() => ({ error: "网络连接失败" }))
+        return { success: false, error: data.error || `服务器错误 (${response.status})` }
       }
+
+      const data = await response.json()
 
       const user: User = {
         id: data.user.id,
@@ -108,12 +110,12 @@ class AuthService {
       }
 
       this.setUser(user)
-      localStorage.setItem("ioffer_token", data.token)
       localStorage.setItem("ioffer_user", JSON.stringify(user))
 
       return { success: true }
     } catch (error) {
-      return { success: false, error: "网络错误，请稍后重试" }
+      console.error("Registration error:", error)
+      return { success: false, error: "网络连接失败，请检查网络设置" }
     } finally {
       this.setLoading(false)
     }
@@ -121,21 +123,17 @@ class AuthService {
 
   async signOut(): Promise<void> {
     try {
-      const token = localStorage.getItem("ioffer_token")
-      if (token) {
-        await fetch("/api/auth/logout", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        })
-      }
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include", // 包含cookies
+      })
     } catch (error) {
       console.error("Logout API call failed:", error)
     } finally {
       this.setUser(null)
-      localStorage.removeItem("ioffer_token")
       localStorage.removeItem("ioffer_user")
     }
   }
@@ -144,31 +142,29 @@ class AuthService {
     this.setLoading(true)
 
     try {
-      const token = localStorage.getItem("ioffer_token")
-      const savedUser = localStorage.getItem("ioffer_user")
+      const response = await fetch("/api/auth/verify", {
+        method: "GET",
+        credentials: "include", // 包含cookies
+      })
 
-      if (token && savedUser) {
-        // Verify token is still valid
-        const response = await fetch("/api/auth/verify", {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
+      if (response.ok) {
+        const data = await response.json()
+        const user: User = {
+          ...data.user,
+          createdAt: new Date(data.user.createdAt),
+          preferences: data.user.preferences || {
+            language: "zh",
+            notifications: true,
+            theme: "light",
           },
-        })
-
-        if (response.ok) {
-          const user = JSON.parse(savedUser)
-          this.setUser(user)
-        } else {
-          // Token is invalid, clear storage
-          localStorage.removeItem("ioffer_token")
-          localStorage.removeItem("ioffer_user")
         }
+        this.setUser(user)
+        localStorage.setItem("ioffer_user", JSON.stringify(user))
+      } else {
+        localStorage.removeItem("ioffer_user")
       }
     } catch (error) {
       console.error("Failed to initialize auth:", error)
-      // Clear invalid data on error
-      localStorage.removeItem("ioffer_token")
       localStorage.removeItem("ioffer_user")
     } finally {
       this.setLoading(false)
@@ -176,12 +172,11 @@ class AuthService {
   }
 
   getToken(): string | null {
-    return localStorage.getItem("ioffer_token")
+    return null
   }
 
   getAuthHeaders(): Record<string, string> {
-    const token = this.getToken()
-    return token ? { Authorization: `Bearer ${token}` } : {}
+    return {}
   }
 
   private setUser(user: User | null) {
